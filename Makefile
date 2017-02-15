@@ -1,6 +1,6 @@
 CC = g++
-CFLAG = -g -O2 -lpthread -Wall
-
+CFLAG = -g -O2 -Wall
+LIBS = -lpthread
 PROGS = server01
 
 all: ${PROGS}
