@@ -6,10 +6,50 @@
 #include<string.h>
 #include<stdlib.h>
 #include<unistd.h>
+#include<sys/wait.h>
+#include<errno.h>
 using namespace std;
 int HTTP_SERVER_PORT = 9008;
 int MAX_QUEUE_SIZE = 1000;
 int BUFF_SIZE = 1000;
+
+void sig_chld(int signo )
+{
+	pid_t pid;
+	int stat;
+	while( ( pid = waitpid( -1, &stat, WNOHANG )) > 0 )
+	  printf("child %d terminateed\n", pid);
+	return;
+}
+typedef void Sigfunc(int);
+Sigfunc * signal( int signo, Sigfunc *func )
+{
+	struct sigaction act, oact;
+	act.sa_handler = func;
+	sigemptyset(&act.sa_mask);
+	act.sa_flags = 0;
+	if( signo == SIGALRM ){
+#ifdef SA_INTERRUPT
+		act.sa_flags |= SA_INTERRUPT;
+#endif
+	}else{
+#ifdef SA_RESTART
+		act.sa_flags |= SA_RESTART;
+#endif
+	}
+	if ( sigaction( signo, &act, &oact ) < 0 )
+	  return (SIG_ERR);
+	return (oact.sa_handler);
+}
+
+Sigfunc*
+Signal( int signo, Sigfunc *func )
+{
+	Sigfunc *sigfunc;
+	if( ( sigfunc = signal( signo, func )) == SIG_ERR )
+	  perror("signal error");
+	return (sigfunc);
+}
 
 int main( int argc, char *argv[])
 {
@@ -47,17 +87,21 @@ int main( int argc, char *argv[])
 		exit(-1);
 	}
 
+	Signal( SIGCHLD, sig_chld);
+
 	printf("http server start on port %d\n", port);
 
 	int count = 0;
 	for(;;)
 	{
 		clilen = sizeof(cliaddr);
-		connfd = accept(listenfd, (struct sockaddr *)&cliaddr, &clilen);
-		if( connfd < 0 )
-		{
-			perror("accept error");
-			exit(-1);
+		if ( (connfd = accept(listenfd, (struct sockaddr *)&cliaddr, &clilen) ) < 0 ) {
+			if ( errno == EINTR )
+			  continue;
+			else{
+			  perror("accept error");
+			  exit(-1);
+			}
 		}
 
 		printf("accept a client %d\n", count);
